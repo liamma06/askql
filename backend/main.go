@@ -8,6 +8,7 @@ import (
 	//"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -16,9 +17,9 @@ import (
 
 var db *sql.DB
 
-func main() {	//sql lite connection
+func main() { //sql lite connection
 	var err error
-	db, err = sql.Open("sqlite", "./database.db")
+	db, err = sql.Open("sqlite", ":memory:")
 	if err != nil {
 		panic(err)
 	}
@@ -122,6 +123,8 @@ func handleUpload(c *gin.Context) {
 }
 
 func handleQuery(c *gin.Context) {
+	start := time.Now()
+
 	var request struct {
 		SQL string `json:"sql"`
 	}
@@ -175,10 +178,11 @@ func handleQuery(c *gin.Context) {
 		results = append(results, row)
 	}
 
+	duration := time.Since(start) //stop timer
+
 	c.JSON(http.StatusOK, gin.H{
-		"sql":       request.SQL,
-		"columns":   columns,
-		"results":   results,
-		"row_count": len(results),
+		"data":    results,
+		"runtime": duration.String(),
+		"query":   request.SQL,
 	})
 }
