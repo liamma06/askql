@@ -16,10 +16,9 @@ import (
 
 var db *sql.DB
 
-func main() {
-	//sql lite connection
+func main() {	//sql lite connection
 	var err error
-	db, err = sql.Open("sqlite", ":memory:")
+	db, err = sql.Open("sqlite", "./database.db")
 	if err != nil {
 		panic(err)
 	}
@@ -39,7 +38,7 @@ func main() {
 	router.POST("/api/upload", handleUpload)
 
 	//quey
-	//router.POST("api/query", handleQuery)
+	router.POST("api/query", handleQuery)
 
 	router.Run(":8080")
 }
@@ -71,22 +70,19 @@ func handleUpload(c *gin.Context) {
 
 	db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName))
 
-	// FIX: Quote column names properly
+	//Quote column names properly
 	columns := make([]string, len(headers))
 	for i, header := range headers {
 		cleanHeader := strings.TrimSpace(header)
-		// Quote column names to handle special characters
 		columns[i] = fmt.Sprintf("`%s` TEXT", cleanHeader)
 	}
 
 	createSQL := fmt.Sprintf("CREATE TABLE %s (%s)", tableName, strings.Join(columns, ", "))
 
-	// DEBUG: Print the SQL to see what's being created
 	fmt.Printf("Creating table with SQL: %s\n", createSQL)
 
 	_, err = db.Exec(createSQL)
 	if err != nil {
-		// Better error message
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("Failed to create table: %v", err),
 			"sql":   createSQL,
@@ -112,7 +108,6 @@ func handleUpload(c *gin.Context) {
 		_, err = db.Exec(insertSQL, values...)
 		if err != nil {
 			fmt.Printf("Error inserting row %d: %v\n", i+1, err)
-			// Don't return error for individual row failures, just log
 			continue
 		}
 	}
@@ -123,5 +118,67 @@ func handleUpload(c *gin.Context) {
 		"rows":     len(records) - 1,
 		"columns":  headers,
 		"table":    tableName,
+	})
+}
+
+func handleQuery(c *gin.Context) {
+	var request struct {
+		SQL string `json:"sql"`
+	}
+
+	//try to read JSON of req and bind it to the request struct if error -> ...
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	//query to get row
+	rows, err := db.Query(request.SQL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to execute query: %v", err)})
+		return
+	}
+
+	defer rows.Close() //close at end to STAY SAFE !!!!
+
+	// Get column names
+	columns, err := rows.Columns()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get columns"})
+		return
+	}
+
+	//slice the row values
+	var results []map[string]interface{} //interface to store any types :) //storing a list of rows
+	for rows.Next() {
+		//this part was super confusing to me so basically 1st values is to hold the values of the row and valuePtrs is to hold pointers to those values
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i] //HERE point each entry in valuePTRS to the corresponding entry in values
+		}
+		//"Please go fetch the values from the database, and store them in those locations."
+		if err := rows.Scan(valuePtrs...); err != nil {
+			continue
+		}
+
+		//mapping
+		row := make(map[string]interface{})
+		for i, col := range columns {
+			val := values[i]
+			if b, ok := val.([]byte); ok {
+				row[col] = string(b) //convert byte slice to string
+			} else {
+				row[col] = val //store the value as is
+			}
+		}
+		results = append(results, row)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"sql":       request.SQL,
+		"columns":   columns,
+		"results":   results,
+		"row_count": len(results),
 	})
 }
