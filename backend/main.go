@@ -1,12 +1,13 @@
 package main
 
 import (
-	//"bytes"
+	"bytes"
 	"database/sql"
 	"encoding/csv"
-
-	//"encoding/json"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/glebarez/go-sqlite"
+	"github.com/joho/godotenv"
 )
 
 var db *sql.DB
@@ -32,10 +34,6 @@ type QueryRequest struct {
 	SQL string `json:"sql"` //standard SQL
 }
 
-type OptimizeRequest struct {
-	SQL string `json:"sql"` //optimize
-}
-
 type NaturalRequest struct {
 	Query string `json:"query"` // Natural language
 }
@@ -48,27 +46,54 @@ type QueryResponse struct {
 	RowCount int                      `json:"row_count"`
 }
 
-type OptimizeResponse struct {
-	OriginalSQL  string   `json:"original_sql"`
-	OptimizedSQL string   `json:"optimized_sql"`
-	Explanation  string   `json:"explanation"`
-	Improvements []string `json:"improvements"`
-	Runtime      string   `json:"runtime"`
+type NaturalResponse struct {
+	NaturalQuery string                   `json:"natural_query"`
+	GeneratedSQL string                   `json:"generated_sql"`
+	Explanation  string                   `json:"explanation"`
+	Runtime      string                   `json:"runtime"`
+	Data         []map[string]interface{} `json:"data"`
+	RowCount     int                      `json:"row_count"`
 }
 
-type NaturalResponse struct {
-	NaturalQuery string `json:"natural_query"`
-	GeneratedSQL string `json:"generated_sql"`
-	Explanation  string `json:"explanation"`
-	Runtime      string `json:"runtime"`
+type AIRequest struct {
+	Model     string    `json:"model"`
+	MaxTokens int       `json:"max_tokens"`
+	Messages  []Message `json:"messages"`
+}
+
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type AIResponse struct {
+	Content []struct {
+		Text string `json:"text"`
+	} `json:"content"`
+}
+
+type SQLResponse struct {
+	SQL string `json:"sql"`
 }
 
 // Ai start
 func init() {
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Println("Warning: No .env file found")
+	}
+
 	aiConfig = AIConfig{
-		APIKey:  os.Getenv("AI_API_KEY"), //get from env
+		APIKey:  os.Getenv("AI_API_KEY"),
 		BaseURL: "https://api.anthropic.com",
 		Model:   "claude-3-5-sonnet-20241022",
+	}
+
+	// Verify API key is loaded
+	if aiConfig.APIKey == "" {
+		log.Println("Warning: AI_API_KEY not found in environment")
+	} else {
+		log.Println("AI configuration loaded successfully")
 	}
 }
 
@@ -97,14 +122,11 @@ func main() {
 	//quey
 	router.POST("api/query", handleQuery)
 
-	//optimize
-	//router.POST("/api/optimize", handleOptimize)
-
 	//natural language
-	//router.POST("/api/natural", handleNatural)
+	router.POST("/api/natural", handleNatural)
 
 	//table schema
-	//router.GET("/api/schema", handleSchema)
+	router.GET("/api/schema", handleSchema)
 
 	router.Run(":8080")
 }
@@ -240,13 +262,230 @@ func handleQuery(c *gin.Context) {
 		}
 		results = append(results, row)
 	}
-
 	duration := time.Since(start) //stop timer
 
 	c.JSON(http.StatusOK, QueryResponse{
 		Data:     results,
-		Runtime:  duration.String(),
+		Runtime:  fmt.Sprintf("%.3fms", float64(duration.Nanoseconds())/1e6),
 		Query:    request.SQL,
 		RowCount: len(results),
 	})
+}
+
+func handleNatural(c *gin.Context) {
+	overallStart := time.Now()
+	var request NaturalRequest
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	// Check AI
+	if aiConfig.APIKey == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI service not configured"})
+		return
+	}
+
+	// add schema context
+	schema, err := getTableSchema()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get table schema"})
+		return
+	}
+	// Generate SQL using AI
+	aiStart := time.Now()
+	generatedSQL, err := generateSQL(request.Query, schema)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to generate SQL: %v", err)})
+		return
+	}
+	aiDuration := time.Since(aiStart)
+	///run sql
+	queryStart := time.Now()
+	rows, err := db.Query(generatedSQL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":         fmt.Sprintf("Failed to execute generated SQL: %v", err),
+			"generated_sql": generatedSQL,
+		})
+		return
+	}
+	defer rows.Close()
+
+	//similar running sql query similar to hte one above :)
+	columns, err := rows.Columns()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get columns"})
+		return
+	}
+
+	var results []map[string]interface{}
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			continue
+		}
+
+		row := make(map[string]interface{})
+		for i, col := range columns {
+			val := values[i]
+			if b, ok := val.([]byte); ok {
+				row[col] = string(b)			} else {
+				row[col] = val
+			}
+		}
+		results = append(results, row)
+	}
+
+	queryDuration := time.Since(queryStart)
+	totalDuration := time.Since(overallStart)
+
+	c.JSON(http.StatusOK, gin.H{
+		"natural_query": request.Query,
+		"generated_sql": generatedSQL,
+		"explanation":   fmt.Sprintf("Generated SQL query from natural language: '%s'", request.Query),
+		"data":          results,
+		"row_count":     len(results),
+		"timing": gin.H{
+			"ai_generation_ms":   fmt.Sprintf("%.3f", float64(aiDuration.Nanoseconds())/1e6),
+			"query_execution_ms": fmt.Sprintf("%.3f", float64(queryDuration.Nanoseconds())/1e6),
+			"total_ms":          fmt.Sprintf("%.3f", float64(totalDuration.Nanoseconds())/1e6),
+		},
+	})
+}
+
+func handleSchema(c *gin.Context) {
+	schema, err := getTableSchema()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get table schema"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"schema": schema,
+	})
+}
+
+// get the table info for better ai contest
+func getTableSchema() (string, error) {
+	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table' AND name != 'sqlite_sequence'")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var tableName string
+		if err := rows.Scan(&tableName); err != nil {
+			continue
+		}
+		tables = append(tables, tableName)
+	}
+
+	if len(tables) == 0 {
+		return "No tables found. Please upload a CSV file first.", nil
+	}
+
+	var schema strings.Builder
+	for _, table := range tables {
+		schema.WriteString(fmt.Sprintf("Table: %s\n", table))
+
+		// Get column info
+		columnRows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+		if err != nil {
+			continue
+		}
+
+		schema.WriteString("Columns:\n")
+		for columnRows.Next() {
+			var cid int
+			var name, dataType string
+			var notNull, pk int
+			var defaultValue *string
+
+			if err := columnRows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+				continue
+			}
+
+			schema.WriteString(fmt.Sprintf("  - %s (%s)\n", name, dataType))
+		}
+		columnRows.Close()
+		schema.WriteString("\n")
+	}
+
+	return schema.String(), nil
+}
+
+func generateSQL(query, schema string) (string, error) {
+	prompt := fmt.Sprintf(`Convert this natural language query to SQL.
+
+Database Schema:
+%s
+
+Natural Language Query: %s
+
+You must respond with ONLY a JSON object in this exact format:
+{"sql": "SELECT * FROM data WHERE..."}
+
+Do not include any other text, explanations, or markdown formatting. Only return the JSON object.`, schema, query)
+
+	aiReq := AIRequest{
+		Model:     aiConfig.Model,
+		MaxTokens: 1000,
+		Messages: []Message{
+			{
+				Role:    "user",
+				Content: prompt,
+			},
+		},
+	}
+
+	reqBody, err := json.Marshal(aiReq)
+	if err != nil {
+		return "", err
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("POST", aiConfig.BaseURL+"/v1/messages", bytes.NewBuffer(reqBody))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", aiConfig.APIKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var aiResp AIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&aiResp); err != nil {
+		return "", err
+	}
+
+	if len(aiResp.Content) == 0 {
+		return "", fmt.Errorf("empty response from AI")
+	}
+
+	// Parse the JSON response to extract SQL
+	var sqlResp SQLResponse
+	if err := json.Unmarshal([]byte(aiResp.Content[0].Text), &sqlResp); err != nil {
+		return "", fmt.Errorf("failed to parse AI response: %v", err)
+	}
+
+	return sqlResp.SQL, nil
 }
