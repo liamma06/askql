@@ -1,12 +1,14 @@
 package main
 
 import (
+	//"bytes"
 	"database/sql"
 	"encoding/csv"
-	"fmt"
 
-	//"io"
+	//"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -17,7 +19,61 @@ import (
 
 var db *sql.DB
 
-func main() { //sql lite connection
+type AIConfig struct {
+	APIKey  string
+	BaseURL string
+	Model   string
+}
+
+var aiConfig AIConfig
+
+// request structs
+type QueryRequest struct {
+	SQL string `json:"sql"` //standard SQL
+}
+
+type OptimizeRequest struct {
+	SQL string `json:"sql"` //optimize
+}
+
+type NaturalRequest struct {
+	Query string `json:"query"` // Natural language
+}
+
+// response structs
+type QueryResponse struct {
+	Data     []map[string]interface{} `json:"data"`
+	Runtime  string                   `json:"runtime"`
+	Query    string                   `json:"query"`
+	RowCount int                      `json:"row_count"`
+}
+
+type OptimizeResponse struct {
+	OriginalSQL  string   `json:"original_sql"`
+	OptimizedSQL string   `json:"optimized_sql"`
+	Explanation  string   `json:"explanation"`
+	Improvements []string `json:"improvements"`
+	Runtime      string   `json:"runtime"`
+}
+
+type NaturalResponse struct {
+	NaturalQuery string `json:"natural_query"`
+	GeneratedSQL string `json:"generated_sql"`
+	Explanation  string `json:"explanation"`
+	Runtime      string `json:"runtime"`
+}
+
+// Ai start
+func init() {
+	aiConfig = AIConfig{
+		APIKey:  os.Getenv("AI_API_KEY"), //get from env
+		BaseURL: "https://api.anthropic.com",
+		Model:   "claude-3-5-sonnet-20241022",
+	}
+}
+
+func main() {
+	//sql connection
 	var err error
 	db, err = sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -40,6 +96,15 @@ func main() { //sql lite connection
 
 	//quey
 	router.POST("api/query", handleQuery)
+
+	//optimize
+	//router.POST("/api/optimize", handleOptimize)
+
+	//natural language
+	//router.POST("/api/natural", handleNatural)
+
+	//table schema
+	//router.GET("/api/schema", handleSchema)
 
 	router.Run(":8080")
 }
@@ -125,9 +190,7 @@ func handleUpload(c *gin.Context) {
 func handleQuery(c *gin.Context) {
 	start := time.Now()
 
-	var request struct {
-		SQL string `json:"sql"`
-	}
+	var request QueryRequest
 
 	//try to read JSON of req and bind it to the request struct if error -> ...
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -180,9 +243,10 @@ func handleQuery(c *gin.Context) {
 
 	duration := time.Since(start) //stop timer
 
-	c.JSON(http.StatusOK, gin.H{
-		"data":    results,
-		"runtime": duration.String(),
-		"query":   request.SQL,
+	c.JSON(http.StatusOK, QueryResponse{
+		Data:     results,
+		Runtime:  duration.String(),
+		Query:    request.SQL,
+		RowCount: len(results),
 	})
 }
