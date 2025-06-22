@@ -262,18 +262,18 @@ func handleQuery(c *gin.Context) {
 		}
 		results = append(results, row)
 	}
+
 	duration := time.Since(start) //stop timer
 
 	c.JSON(http.StatusOK, QueryResponse{
 		Data:     results,
-		Runtime:  fmt.Sprintf("%.3fms", float64(duration.Nanoseconds())/1e6),
+		Runtime:  duration.String(),
 		Query:    request.SQL,
 		RowCount: len(results),
 	})
 }
 
 func handleNatural(c *gin.Context) {
-	overallStart := time.Now()
 	var request NaturalRequest
 
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -293,16 +293,16 @@ func handleNatural(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get table schema"})
 		return
 	}
+
 	// Generate SQL using AI
-	aiStart := time.Now()
 	generatedSQL, err := generateSQL(request.Query, schema)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to generate SQL: %v", err)})
 		return
 	}
-	aiDuration := time.Since(aiStart)
+
 	///run sql
-	queryStart := time.Now()
+	start := time.Now()
 	rows, err := db.Query(generatedSQL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -336,27 +336,23 @@ func handleNatural(c *gin.Context) {
 		for i, col := range columns {
 			val := values[i]
 			if b, ok := val.([]byte); ok {
-				row[col] = string(b)			} else {
+				row[col] = string(b)
+			} else {
 				row[col] = val
 			}
 		}
 		results = append(results, row)
 	}
 
-	queryDuration := time.Since(queryStart)
-	totalDuration := time.Since(overallStart)
+	duration := time.Since(start)
 
-	c.JSON(http.StatusOK, gin.H{
-		"natural_query": request.Query,
-		"generated_sql": generatedSQL,
-		"explanation":   fmt.Sprintf("Generated SQL query from natural language: '%s'", request.Query),
-		"data":          results,
-		"row_count":     len(results),
-		"timing": gin.H{
-			"ai_generation_ms":   fmt.Sprintf("%.3f", float64(aiDuration.Nanoseconds())/1e6),
-			"query_execution_ms": fmt.Sprintf("%.3f", float64(queryDuration.Nanoseconds())/1e6),
-			"total_ms":          fmt.Sprintf("%.3f", float64(totalDuration.Nanoseconds())/1e6),
-		},
+	c.JSON(http.StatusOK, NaturalResponse{
+		NaturalQuery: request.Query,
+		GeneratedSQL: generatedSQL,
+		Explanation:  fmt.Sprintf("Generated SQL query from natural language: '%s'", request.Query),
+		Runtime:      duration.String(),
+		Data:         results,
+		RowCount:     len(results),
 	})
 }
 
