@@ -1,0 +1,29 @@
+{
+  "name": "askql",
+  "version": "1.0.0",
+  "description": "Natural Language to SQL Query Application",
+  "scripts": {
+    "dev": "docker-compose -f docker-compose.dev.yml up -d",
+    "dev:down": "docker-compose -f docker-compose.dev.yml down",
+    "dev:logs": "docker-compose -f docker-compose.dev.yml logs -f",
+    
+    "prod": "docker-compose up -d",
+    "prod:build": "docker-compose up --build -d",
+    "prod:down": "docker-compose down",
+    "prod:logs": "docker-compose logs -f",
+    
+    "redis:cli": "docker exec -it askql-redis redis-cli",
+    "redis:ui": "echo 'Redis UI available at http://localhost:8081'",
+    
+    "clean": "docker-compose down -v && docker system prune -f",
+    "clean:all": "docker-compose down -v && docker system prune -af",
+    
+    "backend:dev": "cd backend && go run main.go",
+    "frontend:dev": "cd frontend && npm run dev",
+    
+    "test:redis": "cd backend && go run redis_test.go"
+  },
+  "keywords": ["sql", "ai", "redis", "go", "nextjs"],
+  "author": "Liam Ma",
+  "license": "MIT"
+}
