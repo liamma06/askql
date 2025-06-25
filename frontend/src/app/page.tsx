@@ -1,6 +1,5 @@
 "use client";
 
-
 import { useState } from "react";
 import Image from "next/image";
 
@@ -10,7 +9,7 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
-
+  const [usingTestFile, setUsingTestFile] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -19,23 +18,19 @@ export default function Home() {
     }
   };
 
-
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
   };
-
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
   };
 
-
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
@@ -48,25 +43,44 @@ export default function Home() {
     }
   };
 
-
+  const handleUseTestFile = async () => {
+    setIsUploading(true);
+    setUsingTestFile(true);
+    
+    try {
+      // Send a request to use the test.csv file that's already on the server
+      const response = await fetch('/api/use-test-file', {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        setUploadSuccess(true);
+      } else {
+        throw new Error('Failed to use test file');
+      }
+    } catch (error) {
+      console.error('Error using test file:', error);
+      alert('Failed to use test file. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+  
   const handleSubmit = async () => {
     if (!file) return;
 
-
     setIsUploading(true);
-
+    setUsingTestFile(false);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
-
 
       // Replace with your actual API endpoint
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
-
 
       if (response.ok) {
         setUploadSuccess(true);
@@ -82,13 +96,11 @@ export default function Home() {
     }
   };
 
-
   return (
     <main className="flex h-auto flex-col items-center p-8 md:p-12">
       <div className="mb-10">
         <h1 className="text-4xl font-bold text-center text-stone-700">Query Your Data</h1>
       </div>
-
 
       <div className="w-full max-w-2xl mt-6">
         <div
@@ -103,7 +115,7 @@ export default function Home() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <div className="mb-6">
+          <div className="mb-5">
             <svg
               className={`w-16 h-16 ${
                 uploadSuccess
@@ -123,7 +135,6 @@ export default function Home() {
               />
             </svg>
           </div>
-
 
           {uploadSuccess ? (
             <div className="text-center">
@@ -145,7 +156,6 @@ export default function Home() {
                 {file ? `${(file.size / 1024).toFixed(2)} KB` : "or click to browse"}
               </p>
 
-
               <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xs">
                 <label className="flex-1">
                   <input
@@ -158,7 +168,6 @@ export default function Home() {
                     Browse Files
                   </div>
                 </label>
-
 
                 {file && (
                   <button
@@ -174,10 +183,19 @@ export default function Home() {
                   </button>
                 )}
               </div>
+              
+              <div className="text-center mt-3">
+                <div className="text-sm text-gray-500 mb-1">or</div>
+                <button
+                  onClick={handleUseTestFile}
+                  className="text-blue-600 hover:text-blue-800 transition-colors font-medium underline"
+                >
+                  Use sample test.csv instead
+                </button>
+              </div>
             </>
           )}
         </div>
-
 
         <div className="mt-4 text-sm text-gray-500 text-center">
           Supported format: CSV files only
