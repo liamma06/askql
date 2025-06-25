@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # Redis Database for Development
+  redis:
+    image: redis:7-alpine
+    container_name: askql-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - askql-dev-network
+
+  # Optional: Redis Web UI for Development
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: askql-redis-ui-dev
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - askql-dev-network
+
+volumes:
+  redis_dev_data:
+
+networks:
+  askql-dev-network:
+    driver: bridge
