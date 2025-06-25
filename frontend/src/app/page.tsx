@@ -8,6 +8,7 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [usingTestFile, setUsingTestFile] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -41,10 +42,34 @@ export default function Home() {
     }
   };
 
+  const handleUseTestFile = async () => {
+    setIsUploading(true);
+    setUsingTestFile(true);
+    
+    try {
+      // Send a request to use the test.csv file that's already on the server
+      const response = await fetch('/api/use-test-file', {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        setUploadSuccess(true);
+      } else {
+        throw new Error('Failed to use test file');
+      }
+    } catch (error) {
+      console.error('Error using test file:', error);
+      alert('Failed to use test file. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+  
   const handleSubmit = async () => {
     if (!file) return;
 
     setIsUploading(true);
+    setUsingTestFile(false);
 
     try {
       const formData = new FormData();
@@ -89,7 +114,7 @@ export default function Home() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <div className="mb-6">
+          <div className="mb-5">
             <svg
               className={`w-16 h-16 ${
                 uploadSuccess
@@ -156,6 +181,16 @@ export default function Home() {
                     {isUploading ? "Uploading..." : "Upload"}
                   </button>
                 )}
+              </div>
+              
+              <div className="text-center mt-3">
+                <div className="text-sm text-gray-500 mb-1">or</div>
+                <button
+                  onClick={handleUseTestFile}
+                  className="text-blue-600 hover:text-blue-800 transition-colors font-medium underline"
+                >
+                  Use sample test.csv instead
+                </button>
               </div>
             </>
           )}
