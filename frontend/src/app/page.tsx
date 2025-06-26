@@ -1,15 +1,66 @@
 "use client";
 
-import { useState } from "react";
+import { useState,useEffect} from "react";
 import Image from "next/image";
+import { useSession } from "@/contexts/SessionContext";
 
 
 export default function Home() {
+  const { setSessionActive, setSessionId } = useSession();
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [usingTestFile, setUsingTestFile] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<string>('checking...');
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  // Test backend connection on component mount
+  useEffect(() => {
+    const testBackendConnection = async () => {
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+        console.log('Testing backend connection to:', backendUrl);
+        
+        const response = await fetch(`${backendUrl}/health`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Backend health check response:', data);
+          setBackendStatus('connected ✅');
+        } else {
+          console.error('Backend health check failed:', response.status);
+          setBackendStatus('failed ❌');
+        }
+      } catch (error) {
+        console.error('Backend connection error:', error);
+        setBackendStatus('error ❌');
+      }
+    };
+
+    testBackendConnection();
+  }, []);
+
+  //function for new session
+  const createSession = async (): Promise<string> => {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    const response = await fetch(`${backendUrl}/api/session/create`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to create session');
+    const data = await response.json();
+    return data.session_id;
+  };
+
+  //success
+  const handleUploadSuccess = (sessionId: string) => {
+    setCurrentSessionId(sessionId);
+    setSessionId(sessionId); // Update global session context
+    setUploadSuccess(true);
+    setSessionActive(true);
+    console.log('Upload successful! Session ID:', sessionId);
+  };
+
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -48,15 +99,37 @@ export default function Home() {
     setUsingTestFile(true);
     
     try {
-      // Send a request to use the test.csv file that's already on the server
-      const response = await fetch('/api/use-test-file', {
+      // Fetch the test.csv file from the public directory
+      const response = await fetch('/test.csv');
+      if (!response.ok) {
+        throw new Error('Failed to fetch test file');
+      }
+      
+      const csvContent = await response.text();
+      const testFile = new File([csvContent], 'test.csv', { type: 'text/csv' });
+      
+      // Set it as the selected file and trigger upload
+      setFile(testFile);
+      
+      // Now upload it normally like any other file
+      const sessionId = await createSession();
+      
+      const formData = new FormData();
+      formData.append('file', testFile);
+      formData.append('session_id', sessionId);
+
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+      const uploadResponse = await fetch(`${backendUrl}/api/upload`, {
         method: 'POST',
+        body: formData,
       });
       
-      if (response.ok) {
-        setUploadSuccess(true);
+      if (uploadResponse.ok) {
+        handleUploadSuccess(sessionId);
       } else {
-        throw new Error('Failed to use test file');
+        const errorText = await uploadResponse.text();
+        console.error('Upload failed:', uploadResponse.status, errorText);
+        throw new Error(`Failed to use test file: ${uploadResponse.status}`);
       }
     } catch (error) {
       console.error('Error using test file:', error);
@@ -73,20 +146,25 @@ export default function Home() {
     setUsingTestFile(false);
 
     try {
+      const sessionId = await createSession();
+      
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('session_id', sessionId);
 
-      // Replace with your actual API endpoint
-      const response = await fetch('/api/upload', {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+      const response = await fetch(`${backendUrl}/api/upload`, {
         method: 'POST',
         body: formData,
       });
 
       if (response.ok) {
-        setUploadSuccess(true);
+        handleUploadSuccess(sessionId);
         setFile(null);
       } else {
-        throw new Error('Upload failed');
+        const errorText = await response.text();
+        console.error('Upload failed:', response.status, errorText);
+        throw new Error(`Upload failed: ${response.status}`);
       }
     } catch (error) {
       console.error('Error uploading file:', error);
@@ -100,6 +178,9 @@ export default function Home() {
     <main className="flex h-auto flex-col items-center p-8 md:p-12">
       <div className="mb-10">
         <h1 className="text-4xl font-bold text-center text-stone-700">Query Your Data</h1>
+        <div className="text-center mt-2">
+          <span className="text-sm text-gray-600">Backend status: {backendStatus}</span>
+        </div>
       </div>
 
       <div className="w-full max-w-2xl mt-6">
@@ -139,10 +220,17 @@ export default function Home() {
           {uploadSuccess ? (
             <div className="text-center">
               <div className="text-lg font-medium text-green-600 mb-2">Upload Successful!</div>
-              <p className="text-sm text-green-500 mb-4">Your file has been uploaded successfully.</p>
+              <p className="text-sm text-green-500 mb-2">Your file has been uploaded successfully.</p>
+              {currentSessionId && (
+                <p className="text-xs text-gray-600 mb-4">Session ID: {currentSessionId}</p>
+              )}
               <button
                 className="px-4 py-2 bg-stone-700 text-white rounded-md hover:bg-stone-800 transition-colors"
-                onClick={() => setUploadSuccess(false)}
+                onClick={() => {
+                  setUploadSuccess(false);
+                  setCurrentSessionId(null);
+                  setSessionId(null); // Clear global session context
+                }}
               >
                 Upload Another File
               </button>
@@ -188,9 +276,10 @@ export default function Home() {
                 <div className="text-sm text-gray-500 mb-1">or</div>
                 <button
                   onClick={handleUseTestFile}
-                  className="text-blue-600 hover:text-blue-800 transition-colors font-medium underline"
+                  disabled={isUploading}
+                  className="text-blue-600 hover:text-blue-800 transition-colors font-medium underline disabled:opacity-50"
                 >
-                  Use sample test.csv instead
+                  {isUploading ? "Loading..." : "Use sample test.csv instead"}
                 </button>
               </div>
             </>
