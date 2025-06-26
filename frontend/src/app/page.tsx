@@ -6,7 +6,7 @@ import { useSession } from "@/contexts/SessionContext";
 
 
 export default function Home() {
-  const { setSessionActive, setSessionId } = useSession();
+  const { setSessionActive, setSessionId, sessionActive } = useSession();
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -41,6 +41,15 @@ export default function Home() {
     testBackendConnection();
   }, []);
 
+  // Reset upload success when session becomes inactive
+  useEffect(() => {
+    if (!sessionActive) {
+      setUploadSuccess(false);
+      setCurrentSessionId(null);
+      setFile(null);
+    }
+  }, [sessionActive]);
+
   //function for new session
   const createSession = async (): Promise<string> => {
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -58,6 +67,7 @@ export default function Home() {
     setSessionId(sessionId); // Update global session context
     setUploadSuccess(true);
     setSessionActive(true);
+    setFile(null); // Clear the selected file
     console.log('Upload successful! Session ID:', sessionId);
   };
 
@@ -160,7 +170,6 @@ export default function Home() {
 
       if (response.ok) {
         handleUploadSuccess(sessionId);
-        setFile(null);
       } else {
         const errorText = await response.text();
         console.error('Upload failed:', response.status, errorText);
@@ -224,16 +233,10 @@ export default function Home() {
               {currentSessionId && (
                 <p className="text-xs text-gray-600 mb-4">Session ID: {currentSessionId}</p>
               )}
-              <button
-                className="px-4 py-2 bg-stone-700 text-white rounded-md hover:bg-stone-800 transition-colors"
-                onClick={() => {
-                  setUploadSuccess(false);
-                  setCurrentSessionId(null);
-                  setSessionId(null); // Clear global session context
-                }}
-              >
-                Upload Another File
-              </button>
+              <div className="text-sm text-gray-600 mt-4 p-4 bg-gray-50 rounded-md">
+                <p className="mb-2">🎉 Your data is ready for querying!</p>
+                <p className="text-xs">Use the "End Session" button in the header when you're done.</p>
+              </div>
             </div>
           ) : (
             <>
