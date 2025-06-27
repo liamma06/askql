@@ -4,14 +4,17 @@ import { useState, useEffect } from "react";
 import { useSession } from "@/contexts/SessionContext";
 import { useRouter } from "next/navigation";
 
+// Define types for our data structures
+type DataRow = Record<string, string | number | null>;
+
 export default function QueryPage() {
   const router = useRouter();
   const { sessionActive, sessionId } = useSession();
-  const [currentData, setCurrentData] = useState<any[]>([]);
+  const [currentData, setCurrentData] = useState<DataRow[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<DataRow[]>([]);
   const [error, setError] = useState("");
   const [queryHistory, setQueryHistory] = useState<{query: string, timestamp: Date, type: 'sql' | 'natural'}[]>([]);
   const [isNaturalLanguage, setIsNaturalLanguage] = useState(false);
@@ -45,6 +48,7 @@ export default function QueryPage() {
 
         if (response.ok) {
           const data = await response.json();
+          //set response data to currentData when the page intially loads to see the full table from the uploaded CSV
           setCurrentData(data.data || []);
         } else {
           console.error('Failed to load current data');
@@ -63,6 +67,7 @@ export default function QueryPage() {
 
   const handleQuerySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    //must have a query or session STOP if not allowed
     if (!query.trim() || !sessionId) return;
 
     setIsLoading(true);
@@ -72,13 +77,14 @@ export default function QueryPage() {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       
       let processedQuery = query;
+      //default for SQL
       let endpoint = '/api/query';
       
+      // BUT if natrual language, process as natural XD
       if (isNaturalLanguage) {
-        // Use the correct natural language endpoint that exists in backend
         endpoint = '/api/natural';
       } else {
-        // Replace 'data' with the full table name for SQL queries
+        // USE DATA instead of the full table cause it is very long
         processedQuery = query.replace(/\bdata\b/g, `data_${sessionId}`);
       }
       
@@ -88,7 +94,7 @@ export default function QueryPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          [isNaturalLanguage ? 'query' : 'sql']: isNaturalLanguage ? query : processedQuery,
+          [isNaturalLanguage ? 'query' : 'sql']: isNaturalLanguage ? query : processedQuery, // since only SQL has data(table name)
           session_id: sessionId,
         }),
       });
@@ -102,7 +108,7 @@ export default function QueryPage() {
           query: query,
           timestamp: new Date(),
           type: isNaturalLanguage ? 'natural' : 'sql'
-        }, ...prev.slice(0, 9)]); // Keep last 10 queries
+        }, ...prev.slice(0, 9)]); // ONLY Keep last 10 queries
         
       } else {
         const errorText = await response.text();
@@ -116,6 +122,7 @@ export default function QueryPage() {
     }
   };
 
+  //catch the sneaky users 
   if (!sessionActive || !sessionId) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -130,16 +137,14 @@ export default function QueryPage() {
     <main className="container mx-auto p-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-stone-700 mb-2">Query Your Data</h1>
-        <p className="text-gray-600">Session ID: {sessionId}</p>
       </div>
 
       {/* Current Database Section */}
       <div className="mb-8">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Current Database</h2>
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
             <h3 className="text-lg font-medium text-gray-900">
-              {isLoadingData ? "Loading..." : `Your Data (${currentData.length} rows)`}
+              {isLoadingData ? "Loading..." : `Data (${currentData.length} rows)`}
             </h3>
           </div>
           <div className="max-h-96 overflow-auto">
@@ -185,7 +190,6 @@ export default function QueryPage() {
       {/* SQL Query Section */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-800">Query Interface</h2>
           <div className="flex items-center space-x-4">
             {/* Query History Toggle */}
             <button
@@ -194,28 +198,28 @@ export default function QueryPage() {
             >
               {showHistory ? 'Hide History' : 'Show History'} ({queryHistory.length})
             </button>
-            
-            {/* SQL/Natural Language Toggle */}
-            <div className="flex items-center space-x-2">
-              <span className={`text-sm ${!isNaturalLanguage ? 'text-stone-700 font-medium' : 'text-gray-500'}`}>
-                SQL
-              </span>
-              <button
-                onClick={() => setIsNaturalLanguage(!isNaturalLanguage)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  isNaturalLanguage ? 'bg-stone-600' : 'bg-gray-300'
+          </div>
+          
+          {/* SQL/Natural Language Toggle - moved to right */}
+          <div className="flex items-center space-x-2">
+            <span className={`text-sm ${!isNaturalLanguage ? 'text-green-700 font-medium' : 'text-gray-500'}`}>
+              SQL
+            </span>
+            <button
+              onClick={() => setIsNaturalLanguage(!isNaturalLanguage)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                isNaturalLanguage ? 'bg-blue-600' : 'bg-green-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  isNaturalLanguage ? 'translate-x-6' : 'translate-x-1'
                 }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    isNaturalLanguage ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-              <span className={`text-sm ${isNaturalLanguage ? 'text-stone-700 font-medium' : 'text-gray-500'}`}>
-                Natural Language
-              </span>
-            </div>
+              />
+            </button>
+            <span className={`text-sm ${isNaturalLanguage ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
+              Natural Language
+            </span>
           </div>
         </div>
 
@@ -261,23 +265,23 @@ export default function QueryPage() {
             </label>
             
             {!isNaturalLanguage && (
-              <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <div className="mb-2 p-3 bg-green-50 border border-green-200 rounded-md">
                 <p className="text-sm text-blue-700">
                   💡 <strong>Tip:</strong> You can use <code className="bg-blue-100 px-1 rounded">data</code> as your table name instead of the full session ID.
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
-                  Example: <code className="bg-blue-100 px-1 rounded">SELECT * FROM data WHERE Name = 'John'</code>
+                  Example: <code className="bg-blue-100 px-1 rounded">SELECT * FROM data WHERE Name = &#39;John&#39;</code>
                 </p>
               </div>
             )}
             
             {isNaturalLanguage && (
-              <div className="mb-2 p-3 bg-green-50 border border-green-200 rounded-md">
+              <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
                 <p className="text-sm text-green-700">
                   🗣️ <strong>Natural Language:</strong> Ask questions about your data in plain English.
                 </p>
                 <p className="text-xs text-green-600 mt-1">
-                  Example: <code className="bg-green-100 px-1 rounded">"Show me all records where age is greater than 25"</code>
+                  Example: <code className="bg-green-100 px-1 rounded">&#34;Show me all records where age is greater than 25&#34;</code>
                 </p>
               </div>
             )}
@@ -294,16 +298,26 @@ export default function QueryPage() {
               rows={4}
             />
           </div>
-          <button
-            type="submit"
-            disabled={isLoading || !query.trim()}
-            className="px-6 py-2 bg-stone-700 text-white rounded-md hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading 
-              ? (isNaturalLanguage ? "Processing..." : "Executing...") 
-              : (isNaturalLanguage ? "Ask Question" : "Execute Query")
-            }
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              disabled={!query.trim()}
+              className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading || !query.trim()}
+              className="px-6 py-2 bg-stone-700 text-white rounded-md hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading 
+                ? (isNaturalLanguage ? "Processing..." : "Executing...") 
+                : (isNaturalLanguage ? "Ask Question" : "Execute Query")
+              }
+            </button>
+          </div>
         </form>
       </div>
 
