@@ -12,7 +12,6 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [backendStatus, setBackendStatus] = useState<string>('checking...');
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   // Test backend connection on component mount
   useEffect(() => {
@@ -40,11 +39,9 @@ export default function Home() {
     testBackendConnection();
   }, []);
 
-  // Reset upload success when session becomes inactive
+  // Reset state when session becomes inactive
   useEffect(() => {
     if (!sessionActive) {
-      setUploadSuccess(false);
-      setCurrentSessionId(null);
       setFile(null);
     }
   }, [sessionActive]);
@@ -60,11 +57,9 @@ export default function Home() {
     return data.session_id;
   };
 
-  //success
+  //success - redirect immediately 
   const handleUploadSuccess = (sessionId: string) => {
-    setCurrentSessionId(sessionId);
     setSessionId(sessionId); // Update global session context
-    setUploadSuccess(true);
     setSessionActive(true);
     setFile(null); // Clear the selected file
     console.log('Upload successful! Session ID:', sessionId);
@@ -77,7 +72,6 @@ export default function Home() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
-      setUploadSuccess(false);
     }
   };
 
@@ -99,7 +93,6 @@ export default function Home() {
       const droppedFile = e.dataTransfer.files[0];
       if (droppedFile.type === "text/csv" || droppedFile.name.endsWith(".csv")) {
         setFile(droppedFile);
-        setUploadSuccess(false);
       } else {
         alert("Please upload a CSV file");
       }
@@ -108,7 +101,6 @@ export default function Home() {
 
   const handleUseTestFile = async () => {
     setIsUploading(true);
-    setUsingTestFile(true);
     
     try {
       // Fetch the test.csv file from the public directory
@@ -155,7 +147,6 @@ export default function Home() {
     if (!file) return;
 
     setIsUploading(true);
-    setUsingTestFile(false);
 
     try {
       const sessionId = await createSession();
@@ -199,9 +190,7 @@ export default function Home() {
           className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center transition-colors ${
             isDragging
               ? "border-blue-500 bg-blue-50"
-              : uploadSuccess
-                ? "border-green-500 bg-green-50"
-                : "border-gray-300 bg-gray-50 hover:bg-gray-100"
+              : "border-gray-300 bg-gray-50 hover:bg-gray-100"
           }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -209,11 +198,7 @@ export default function Home() {
         >
           <div className="mb-5">
             <svg
-              className={`w-16 h-16 ${
-                uploadSuccess
-                  ? "text-green-500"
-                  : "text-gray-400"
-              }`}
+              className="w-16 h-16 text-gray-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -228,71 +213,51 @@ export default function Home() {
             </svg>
           </div>
 
-          {uploadSuccess ? (
-            <div className="text-center">
-              <div className="text-lg font-medium text-green-600 mb-2">Upload Successful!</div>
-              <p className="text-sm text-green-500 mb-2">Your file has been uploaded successfully.</p>
-              {currentSessionId && (
-                <p className="text-xs text-gray-600 mb-4">Session ID: {currentSessionId}</p>
-              )}
-              <div className="text-sm text-gray-600 mt-4 p-4 bg-gray-50 rounded-md">
-                <p className="mb-2">🎉 Your data is ready for querying!</p>
-                <p className="text-xs">Use the "End Session" button in the header when you're done.</p>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="text-lg font-medium text-gray-700 mb-2">
-                {file ? file.name : "Drop your CSV file here"}
-              </div>
-              <p className="text-sm text-gray-500 mb-4">
-                {file ? `${(file.size / 1024).toFixed(2)} KB` : "or click to browse"}
-              </p>
+          <div className="text-lg font-medium text-gray-700 mb-2">
+            {file ? file.name : "Drop your CSV file here"}
+          </div>
+          <p className="text-sm text-gray-500 mb-4">
+            {file ? `${(file.size / 1024).toFixed(2)} KB` : "or click to browse"}
+          </p>
 
-              <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xs">
-                <label className="flex-1">
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".csv"
-                    onChange={handleFileChange}
-                  />
-                  <div className="w-full px-4 py-2 text-center text-gray-600 bg-white border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
-                    Browse Files
-                  </div>
-                </label>
-
-                {file && (
-                  <button
-                    className={`flex-1 px-4 py-2 text-white rounded-md transition-colors ${
-                      isUploading
-                        ? "bg-stone-500 cursor-not-allowed"
-                        : "bg-stone-700 hover:bg-stone-800"
-                    }`}
-                    onClick={handleSubmit}
-                    disabled={isUploading}
-                  >
-                    {isUploading ? "Uploading..." : "Upload"}
-                  </button>
-                )}
+          <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xs">
+            <label className="flex-1">
+              <input
+                type="file"
+                className="hidden"
+                accept=".csv"
+                onChange={handleFileChange}
+              />
+              <div className="w-full px-4 py-2 text-center text-gray-600 bg-white border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
+                Browse Files
               </div>
-              
-              <div className="text-center mt-3">
-                <div className="text-sm text-gray-500 mb-1">or</div>
-                <button
-                  onClick={handleUseTestFile}
-                  disabled={isUploading}
-                  className="text-blue-600 hover:text-blue-800 transition-colors font-medium underline disabled:opacity-50"
-                >
-                  {isUploading ? "Loading..." : "Use sample test.csv instead"}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+            </label>
 
-        <div className="mt-4 text-sm text-gray-500 text-center">
-          Supported format: CSV files only
+            {file && (
+              <button
+                className={`flex-1 px-4 py-2 text-white rounded-md transition-colors ${
+                  isUploading
+                    ? "bg-stone-500 cursor-not-allowed"
+                    : "bg-stone-700 hover:bg-stone-800"
+                }`}
+                onClick={handleSubmit}
+                disabled={isUploading}
+              >
+                {isUploading ? "Uploading..." : "Upload"}
+              </button>
+            )}
+          </div>
+          
+          <div className="text-center mt-3">
+            <div className="text-sm text-gray-500 mb-1">or</div>
+            <button
+              onClick={handleUseTestFile}
+              disabled={isUploading}
+              className="text-blue-600 hover:text-blue-800 transition-colors font-medium underline disabled:opacity-50"
+            >
+              {isUploading ? "Loading..." : "Use sample test.csv instead"}
+            </button>
+          </div>
         </div>
       </div>
     </main>

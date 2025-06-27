@@ -266,22 +266,22 @@ export default function QueryPage() {
             
             {!isNaturalLanguage && (
               <div className="mb-2 p-3 bg-green-50 border border-green-200 rounded-md">
-                <p className="text-sm text-blue-700">
-                  💡 <strong>Tip:</strong> You can use <code className="bg-blue-100 px-1 rounded">data</code> as your table name instead of the full session ID.
+                <p className="text-sm text-green-700">
+                  💡 <strong>Tip:</strong> You can use <code className="bg-greem-100 px-1 rounded">data</code> as your table name instead of the full session ID.
                 </p>
-                <p className="text-xs text-blue-600 mt-1">
-                  Example: <code className="bg-blue-100 px-1 rounded">SELECT * FROM data WHERE Name = &#39;John&#39;</code>
+                <p className="text-xs text-green-600 mt-1">
+                  Example: <code className="bg-green-100 px-1 rounded">SELECT * FROM data WHERE Name = &#39;John&#39;</code>
                 </p>
               </div>
             )}
             
             {isNaturalLanguage && (
               <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                <p className="text-sm text-green-700">
+                <p className="text-sm text-blue-700">
                   🗣️ <strong>Natural Language:</strong> Ask questions about your data in plain English.
                 </p>
-                <p className="text-xs text-green-600 mt-1">
-                  Example: <code className="bg-green-100 px-1 rounded">&#34;Show me all records where age is greater than 25&#34;</code>
+                <p className="text-xs text-blue-600 mt-1">
+                  Example: <code className="bg-blue-100 px-1 rounded">&#34;Show me all records where age is greater than 25&#34;</code>
                 </p>
               </div>
             )}
