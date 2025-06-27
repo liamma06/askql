@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Header from "@/components/header";
+import { SessionProvider } from "@/contexts/SessionContext";
 import "./globals.css";
 
 
@@ -25,8 +26,10 @@ export default function RootLayout({
       <body
         className={`${inter.className} antialiased`}
       >
-        <Header />
-        {children}
+        <SessionProvider>
+          <Header />
+          {children}
+        </SessionProvider>
       </body>
     </html>
   );
