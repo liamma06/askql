@@ -3,9 +3,11 @@
 import { useState,useEffect} from "react";
 import Image from "next/image";
 import { useSession } from "@/contexts/SessionContext";
+import { useRouter } from "next/navigation";
 
 
 export default function Home() {
+  const router = useRouter();
   const { setSessionActive, setSessionId, sessionActive } = useSession();
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -69,6 +71,9 @@ export default function Home() {
     setSessionActive(true);
     setFile(null); // Clear the selected file
     console.log('Upload successful! Session ID:', sessionId);
+    
+    // Redirect to query page after successful upload
+    router.push('/query');
   };
 
 
