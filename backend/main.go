@@ -195,7 +195,13 @@ func main() {
 	// Start cleanup routine for expired sessions
 	go cleanupExpiredSessions()
 
-	router.Run(":8080")
+	// Get port from environment variable (Cloud Run compatibility)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Default port for local development
+	}
+
+	router.Run(":" + port)
 }
 
 // Session management functions

@@ -35,12 +35,15 @@ COPY --from=builder /app/main .
 COPY --from=builder /app/test.csv ./test.csv
 COPY --from=builder /app/query.json ./query.json
 
-# Expose port
-EXPOSE 8080
+# Set default port for Cloud Run (can be overridden)
+ENV PORT=8080
 
-# Health check
+# Expose port (Cloud Run will override this)
+EXPOSE $PORT
+
+# Health check - use PORT environment variable
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:$PORT/health || exit 1
 
 # Command to run
 CMD ["./main"]
