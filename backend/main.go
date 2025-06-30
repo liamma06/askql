@@ -133,6 +133,7 @@ func init() {
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
 	}
+	log.Printf("Using Redis address: %s", redisAddr)
 
 	redisPassword := os.Getenv("REDIS_PASSWORD")
 	redisDB := 0
