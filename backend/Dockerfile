@@ -31,10 +31,6 @@ WORKDIR /root/
 # Copy the binary from builder stage
 COPY --from=builder /app/main .
 
-# Copy any additional files if needed
-COPY --from=builder /app/test.csv ./test.csv
-COPY --from=builder /app/query.json ./query.json
-
 # Set default port for Cloud Run (can be overridden)
 ENV PORT=8080
 
